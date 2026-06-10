@@ -1,0 +1,64 @@
+# ── CI Personalizado - Módulo 1 ───────────────────────────────────────────────
+# Executa em: push/PR para main e develop
+# Etapas: install → lint → format-check → test → build Docker
+
+name: CI - Frutas Aleatórias
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  qualidade:
+    name: Qualidade de Código
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v4
+
+      - name: Configurar Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Instalar dependências
+        run: make install
+
+      - name: Verificar formatação (black)
+        run: black --check *.py
+
+      - name: Lint (pylint)
+        run: make lint
+
+      - name: Testes com cobertura
+        run: make test
+
+      - name: Publicar relatório de cobertura
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: cobertura-testes
+          path: .coverage
+
+  docker:
+    name: Build Docker
+    runs-on: ubuntu-latest
+    needs: qualidade          # só executa se os testes passarem
+
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v4
+
+      - name: Build da imagem Docker
+        run: docker build -t frutas-servico:${{ github.sha }} .
+
+      - name: Smoke test do container
+        run: |
+          docker run -d --name frutas-test -p 8080:8080 frutas-servico:${{ github.sha }}
+          sleep 3
+          curl --fail http://localhost:8080/saude
+          docker stop frutas-test
